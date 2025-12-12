@@ -1,614 +1,597 @@
+import React, { useState, useEffect } from 'react';
+import { Users, LogOut, RefreshCw, Trash2, Activity } from 'lucide-react';
 
-<!doctype html>
-<html lang="pt-BR">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Checklist STRAP – App</title>
-<link rel="icon" href="data:;base64,iVBORw0KGgo=">
-<style>
-:root{
-  --bg:#f3f4f6; --card:#ffffff; --muted:#6b7280; --accent:#2563eb; --accent-2:#10b981;
-  --surface:#e5e7eb; --danger:#ef4444; --glass:rgba(255,255,255,0.6);
-}
-[data-theme="dark"]{
-  --bg:#0b1220; --card:#0f1724; --muted:#9ca3af; --accent:#60a5fa; --accent-2:#34d399;
-  --surface:#111827; --danger:#f87171; --glass:rgba(255,255,255,0.03);
-}
-*{box-sizing:border-box}
-body{
-  margin:0; font-family: Inter, "Segoe UI", Roboto, Arial; background:var(--bg); color:var(--muted);
-  -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
-}
-.app{
-  display:flex; min-height:100vh;
-}
-/* Sidebar */
-.sidebar{
-  width:280px; background:linear-gradient(180deg,var(--card),var(--glass));
-  padding:18px; border-right:1px solid rgba(0,0,0,0.06);
-}
-.brand{display:flex;align-items:center;gap:12px;margin-bottom:18px;}
-.logo{
-  width:44px;height:44px;border-radius:8px;background:linear-gradient(135deg,var(--accent),var(--accent-2));
-  display:flex;align-items:center;justify-content:center;color:white;font-weight:700;
-  box-shadow:0 6px 18px rgba(37,99,235,0.12);
-}
-.title{font-weight:700;color:var(--muted);font-size:16px}
-.small{font-size:12px;color:var(--muted);opacity:0.9}
+const StrapCollaborative = () => {
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [activePane, setActivePane] = useState('dashboard');
+  const [projects, setProjects] = useState({});
+  const [categories] = useState(['Geral', 'Estrutural']);
+  const [currentProject, setCurrentProject] = useState(null);
+  const [activityLog, setActivityLog] = useState([]);
+  const [lastSync, setLastSync] = useState(null);
 
-/* Nav */
-.nav{margin-top:14px;display:flex;flex-direction:column;gap:8px}
-.nav button{
-  display:flex;align-items:center;gap:10px;padding:10px;border-radius:8px;border:0;background:transparent;color:var(--muted);
-  cursor:pointer;font-weight:600;text-align:left;
-}
-.nav button.active{background:var(--surface);box-shadow:inset 0 0 0 1px rgba(0,0,0,0.03)}
-.sep{height:1px;background:linear-gradient(90deg,transparent,var(--surface),transparent);margin:12px 0;border-radius:4px}
+  const defaultSections = {
+    "Preparação do Modelo": ["Definir o unifilar", "Lançar os tipos de perfis", "Corrigir a orientação dos perfis"],
+    "Determinar Vistas": ["Vista 3D", "Eixos", "Filas", "Elevações"],
+    "Condições de Contorno": ["Aplicar apoios", "Ligações rígidas"],
+    "Carregamentos": ["Lançar carregamentos", "Configurar padrões", "Definir combinações"],
+    "Verificações": ["Verificação da deformada", "Verificação dos diagramas", "Combinar barras contínuas"],
+    "Dimensionamento": ["Dimensionar estrutura e atualizar geometria"]
+  };
 
-/* Main */
-.main{flex:1;padding:24px;overflow:auto}
-.header{display:flex;justify-content:space-between;align-items:center;gap:12px}
-.controls{display:flex;align-items:center;gap:10px}
-.btn{
-  padding:10px 14px;border-radius:8px;border:0;background:var(--accent);color:white;font-weight:700;cursor:pointer;
-}
-.ghost{background:transparent;border:1px solid rgba(0,0,0,0.06);color:var(--muted);font-weight:600}
+  useEffect(() => {
+    initializeApp();
+  }, []);
 
-/* Layout */
-.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:18px}
-.card{background:var(--card);padding:16px;border-radius:12px;box-shadow:0 6px 20px rgba(2,6,23,0.04);color:var(--muted)}
-.card h3{margin:0 0 8px 0;color:var(--muted)}
-.progressbar{height:12px;background:#e6e9ee;border-radius:8px;overflow:hidden}
-.progress{height:12px;background:var(--accent-2);width:0%}
+  useEffect(() => {
+    if (user) {
+      const interval = setInterval(() => syncData(), 30000);
+      return () => clearInterval(interval);
+    }
+  }, [user, projects, activityLog]);
 
-/* Projects list */
-.projects{margin-top:12px;display:flex;flex-direction:column;gap:8px}
-.project-row{display:flex;justify-content:space-between;align-items:center;padding:8px;border-radius:8px;background:var(--surface)}
-.project-row .meta{display:flex;gap:10px;align-items:center}
-.kv{font-size:12px;color:var(--muted)}
+  const initializeApp = async () => {
+    setLoading(true);
+    try {
+      const savedUser = localStorage.getItem('strap_user');
+      if (savedUser) {
+        setUser(JSON.parse(savedUser));
+        await loadDataFromStorage();
+      }
+    } catch (error) {
+      console.error('Erro:', error);
+    }
+    setLoading(false);
+  };
 
-/* Checklist area */
-.checklist-wrap{margin-top:16px;display:flex;gap:18px}
-.left{flex:2}
-.right{flex:1}
-.section{margin-bottom:12px}
-.section h4{margin:6px 0 8px 0;color:var(--muted)}
-.task{display:flex;align-items:center;gap:10px;padding:8px;border-radius:8px;background:linear-gradient(0deg,transparent,transparent);margin-bottom:6px}
-.task input[type="checkbox"]{width:18px;height:18px}
-.task .ttext{font-weight:600;color:var(--muted);font-size:14px}
-.smalltxt{font-size:12px;color:var(--muted)}
+  const loadDataFromStorage = async () => {
+    setSyncing(true);
+    try {
+      const projectsData = await window.storage.get('strap_projects', true);
+      if (projectsData) setProjects(JSON.parse(projectsData.value));
 
-/* Forms */
-.form-row{display:flex;gap:8px;align-items:center;margin-top:8px}
-.input,select{padding:8px;border-radius:8px;border:1px solid rgba(0,0,0,0.06);background:transparent;color:var(--muted);min-width:0}
-.input{flex:1}
+      const logData = await window.storage.get('strap_activity_log', true);
+      if (logData) setActivityLog(JSON.parse(logData.value));
 
-/* Footer */
-.footer{margin-top:18px;font-size:13px;color:var(--muted)}
+      setLastSync(new Date());
+    } catch (error) {
+      console.error('Erro ao carregar:', error);
+    }
+    setSyncing(false);
+  };
 
-/* Responsive */
-@media(max-width:900px){
-  .sidebar{display:none}
-  .grid{grid-template-columns:1fr}
-  .checklist-wrap{flex-direction:column}
-}
-</style>
-</head>
-<body>
-<div class="app" id="app" data-theme="light">
-  <aside class="sidebar">
-    <div class="brand">
-      <div class="logo">S</div>
-      <div>
-        <div class="title">Checklist STRAP</div>
-        <div class="small">Gerenciador de projetos</div>
+  const syncData = async () => {
+    if (!user) return;
+    setSyncing(true);
+    try {
+      await window.storage.set('strap_projects', JSON.stringify(projects), true);
+      await window.storage.set('strap_activity_log', JSON.stringify(activityLog), true);
+      setLastSync(new Date());
+    } catch (error) {
+      console.error('Erro ao sincronizar:', error);
+    }
+    setSyncing(false);
+  };
+
+  const logActivity = (action, details) => {
+    const entry = {
+      id: Date.now(),
+      user: user.email,
+      action,
+      details,
+      timestamp: new Date().toISOString()
+    };
+    setActivityLog([entry, ...activityLog].slice(0, 100));
+  };
+
+  const login = async (email, password) => {
+    if (email && password.length >= 6) {
+      const userData = { email, name: email.split('@')[0] };
+      setUser(userData);
+      localStorage.setItem('strap_user', JSON.stringify(userData));
+      await loadDataFromStorage();
+      logActivity('login', 'Usuário conectado');
+      return true;
+    }
+    return false;
+  };
+
+  const logout = () => {
+    setUser(null);
+    localStorage.removeItem('strap_user');
+    setActivePane('dashboard');
+  };
+
+  const createProject = async (name, category) => {
+    if (!name || projects[name]) return false;
+    
+    const newProject = {
+      meta: { category, created: new Date().toISOString(), createdBy: user.email },
+      tasks: {},
+      customSections: {}
+    };
+
+    Object.entries(defaultSections).forEach(([section, tasks]) => {
+      tasks.forEach(task => {
+        newProject.tasks[`${section}::${task}`] = false;
+      });
+    });
+
+    setProjects({ ...projects, [name]: newProject });
+    logActivity('create_project', `Projeto "${name}" criado`);
+    await syncData();
+    return true;
+  };
+
+  const toggleTask = async (projectName, taskId, value) => {
+    const project = projects[projectName];
+    if (!project) return;
+
+    const updatedTasks = { ...project.tasks, [taskId]: value };
+    const updated = { ...project, tasks: updatedTasks };
+    
+    setProjects({ ...projects, [projectName]: updated });
+    
+    const taskName = taskId.split('::')[1];
+    logActivity('toggle_task', `"${taskName}" ${value ? 'concluída' : 'desmarcada'} em "${projectName}"`);
+    await syncData();
+  };
+
+  const deleteProject = async (projectName) => {
+    const newProjects = { ...projects };
+    delete newProjects[projectName];
+    setProjects(newProjects);
+    logActivity('delete_project', `Projeto "${projectName}" excluído`);
+    await syncData();
+  };
+
+  if (!user) {
+    return <LoginScreen onLogin={login} loading={loading} />;
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <div className="flex">
+        <Sidebar 
+          user={user}
+          activePane={activePane}
+          setActivePane={setActivePane}
+          currentProject={currentProject}
+          syncing={syncing}
+          lastSync={lastSync}
+          syncData={syncData}
+          logout={logout}
+          categories={categories}
+          onCreateProject={createProject}
+        />
+
+        <main className="flex-1 p-8 overflow-auto">
+          {activePane === 'dashboard' && (
+            <Dashboard 
+              projects={projects} 
+              onOpenProject={(name) => {
+                setCurrentProject(name);
+                setActivePane('checklist');
+              }} 
+            />
+          )}
+          
+          {activePane === 'projects' && (
+            <ProjectsList 
+              projects={projects}
+              onOpenProject={(name) => {
+                setCurrentProject(name);
+                setActivePane('checklist');
+              }}
+              onDeleteProject={deleteProject}
+            />
+          )}
+          
+          {activePane === 'checklist' && currentProject && (
+            <ChecklistView
+              projectName={currentProject}
+              project={projects[currentProject]}
+              defaultSections={defaultSections}
+              onToggleTask={toggleTask}
+              onDeleteProject={() => {
+                deleteProject(currentProject);
+                setCurrentProject(null);
+                setActivePane('dashboard');
+              }}
+            />
+          )}
+          
+          {activePane === 'activity' && <ActivityLog activityLog={activityLog} />}
+        </main>
       </div>
     </div>
+  );
+};
 
-    <div class="nav">
-      <button id="nav-dashboard" class="active" onclick="showPane('dashboard')">Dashboard</button>
-      <button id="nav-projects" onclick="showPane('projects')">Projetos</button>
-      <button id="nav-checklist" onclick="showPane('checklist')">Checklist</button>
-      <button id="nav-settings" onclick="showPane('settings')">Configurações</button>
-    </div>
+const LoginScreen = ({ onLogin, loading }) => {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
 
-    <div class="sep"></div>
+  const handleSubmit = async () => {
+    setError('');
+    if (!email || !password) {
+      setError('Preencha todos os campos');
+      return;
+    }
+    const success = await onLogin(email, password);
+    if (!success) setError('Email ou senha inválidos (mínimo 6 caracteres)');
+  };
 
-    <div style="display:flex;gap:8px;align-items:center;justify-content:space-between">
-      <div style="display:flex;flex-direction:column">
-        <div class="small">Tema</div>
-        <div class="smalltxt" id="currentTheme">Claro</div>
-      </div>
-      <button id="themeToggle" class="ghost" onclick="toggleTheme()">Alternar</button>
-    </div>
-
-    <div class="sep"></div>
-
-    <div style="margin-top:12px">
-      <div class="small">Criar novo projeto</div>
-      <div class="form-row">
-        <input id="newProjectName" class="input" placeholder="Nome do projeto">
-        <button class="btn" onclick="createProject()">Criar</button>
-      </div>
-      <div class="smalltxt" style="margin-top:8px">Categoria</div>
-      <div class="form-row">
-        <select id="newProjectCategory" class="input"></select>
-        <button class="ghost" onclick="openCreateCategory()">+</button>
-      </div>
-    </div>
-
-  </aside>
-
-  <main class="main">
-    <div id="pane-dashboard">
-      <div class="header">
-        <h2>Dashboard</h2>
-        <div class="controls">
-          <button class="ghost" onclick="exportAll()">Exportar</button>
-          <button class="ghost" onclick="importAll()">Importar</button>
-          <button class="btn" onclick="showPane('projects')">Ver Projetos</button>
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-md">
+        <div className="text-center mb-8">
+          <div className="w-24 h-24 bg-gradient-to-br from-blue-600 to-purple-600 rounded-3xl mx-auto mb-6 flex items-center justify-center text-white text-4xl font-bold">S</div>
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">Checklist STRAP</h1>
+          <p className="text-gray-600">Sistema Colaborativo</p>
         </div>
-      </div>
-
-      <div class="grid">
-        <div class="card">
-          <h3>Projetos</h3>
-          <div id="cardProjects" class="kv">0 projetos</div>
-        </div>
-        <div class="card">
-          <h3>Progresso médio</h3>
-          <div class="progressbar" style="margin-top:8px"><div id="avgProgress" class="progress"></div></div>
-          <div class="smalltxt" id="avgLabel" style="margin-top:8px">0%</div>
-        </div>
-        <div class="card">
-          <h3>Resumo por categoria</h3>
-          <div id="categorySummary" style="margin-top:8px"></div>
-        </div>
-      </div>
-
-      <div class="card" style="margin-top:18px">
-        <h3>Projetos recentes</h3>
-        <div id="recentProjects" class="projects"></div>
-      </div>
-    </div>
-
-    <div id="pane-projects" style="display:none">
-      <div class="header">
-        <h2>Projetos</h2>
-        <div class="controls">
-          <input id="filterText" class="input" placeholder="Buscar...">
-          <button class="ghost" onclick="loadProjects()">Atualizar</button>
-        </div>
-      </div>
-
-      <div id="projectsList" class="projects" style="margin-top:12px"></div>
-    </div>
-
-    <div id="pane-checklist" style="display:none">
-      <div class="header">
-        <h2 id="checklistTitle">Checklist</h2>
-        <div class="controls">
-          <button class="ghost" onclick="addTaskUI()">➕ Tarefa</button>
-          <button class="ghost" onclick="addCategoryUI()">➕ Categoria</button>
-          <button class="btn" onclick="saveCurrent()">Salvar</button>
-        </div>
-      </div>
-
-      <div class="checklist-wrap">
-        <div class="left card" id="checklistArea"></div>
-        <div class="right card">
-          <h3>Resumo</h3>
-          <div class="smalltxt">Progresso do projeto</div>
-          <div class="progressbar" style="margin-top:8px"><div id="projectProgress" class="progress"></div></div>
-          <div id="progressLabel" class="smalltxt" style="margin-top:8px">0%</div>
-
-          <div style="margin-top:12px">
-            <h4>Metadados</h4>
-            <div class="smalltxt">Nome: <span id="metaName"></span></div>
-            <div class="smalltxt">Categoria: <span id="metaCategory"></span></div>
-            <div style="margin-top:8px">
-              <button class="ghost" onclick="renameProject()">Renomear</button>
-              <button class="ghost" onclick="changeCategory()">Mudar categoria</button>
-              <button class="ghost" style="background:var(--danger);color:white" onclick="deleteProject()">Excluir</button>
+        
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">Email</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && handleSubmit()}
+              className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder="seu@email.com"
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">Senha</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && handleSubmit()}
+              className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder="••••••"
+            />
+          </div>
+          
+          {error && (
+            <div className="bg-red-50 border-2 border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm font-medium">
+              {error}
             </div>
+          )}
+          
+          <button
+            onClick={handleSubmit}
+            disabled={loading}
+            className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-4 rounded-xl font-bold hover:shadow-xl transition-all disabled:opacity-50"
+          >
+            {loading ? 'Carregando...' : 'Entrar'}
+          </button>
+          
+          <p className="text-xs text-center text-gray-500 mt-4">Use qualquer email e senha com 6+ caracteres</p>
+        </div>
+
+        <div className="mt-8 grid grid-cols-3 gap-4 text-center">
+          <div className="p-3 bg-blue-50 rounded-xl">
+            <div className="text-2xl mb-1">🔄</div>
+            <p className="text-xs text-gray-600">Sync real-time</p>
+          </div>
+          <div className="p-3 bg-purple-50 rounded-xl">
+            <div className="text-2xl mb-1">👥</div>
+            <p className="text-xs text-gray-600">Multi-usuário</p>
+          </div>
+          <div className="p-3 bg-green-50 rounded-xl">
+            <div className="text-2xl mb-1">📝</div>
+            <p className="text-xs text-gray-600">Histórico</p>
           </div>
         </div>
       </div>
-
-      <div class="footer">Dica: Clique nas tarefas para marcar como concluídas. Você pode adicionar/excluir categorias e tarefas livremente.</div>
     </div>
+  );
+};
 
-    <div id="pane-settings" style="display:none">
-      <h2>Configurações</h2>
-      <div class="card" style="margin-top:12px">
-        <h3>Categorias</h3>
-        <div id="categoryList"></div>
-        <div class="form-row" style="margin-top:12px">
-          <input id="newCategoryName" class="input" placeholder="Nova categoria">
-          <button class="btn" onclick="createCategory()">Criar</button>
+const Sidebar = ({ user, activePane, setActivePane, currentProject, syncing, lastSync, syncData, logout, categories, onCreateProject }) => {
+  const [name, setName] = useState('');
+  const [category, setCategory] = useState(categories[0]);
+
+  const handleCreate = async () => {
+    if (!name.trim()) {
+      alert('Digite um nome para o projeto');
+      return;
+    }
+    const success = await onCreateProject(name, category);
+    if (success) {
+      setName('');
+      alert('Projeto criado com sucesso!');
+    } else {
+      alert('Já existe um projeto com esse nome');
+    }
+  };
+
+  return (
+    <aside className="w-80 bg-white border-r border-gray-200 p-6 min-h-screen">
+      <div className="mb-8">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-14 h-14 bg-gradient-to-br from-blue-600 to-purple-600 rounded-2xl flex items-center justify-center text-white font-bold text-2xl">S</div>
+          <div>
+            <h2 className="font-bold text-xl">STRAP</h2>
+            <p className="text-xs text-gray-500">Colaborativo</p>
+          </div>
+        </div>
+        
+        <div className="flex items-center gap-3 p-4 rounded-xl bg-gradient-to-r from-blue-50 to-purple-50">
+          <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-purple-600 rounded-full flex items-center justify-center text-white font-bold">
+            {user.name[0].toUpperCase()}
+          </div>
+          <div className="flex-1">
+            <p className="text-sm font-bold">{user.name}</p>
+            <p className="text-xs text-gray-500">{user.email}</p>
+          </div>
+          <button onClick={logout} className="p-2 hover:bg-red-100 rounded-lg" title="Sair">
+            <LogOut className="w-4 h-4 text-red-600" />
+          </button>
         </div>
       </div>
 
-      <div class="card" style="margin-top:12px">
-        <h3>Deploy</h3>
-        <p class="smalltxt">Para subir para a nuvem (GitHub Pages) siga estes passos:</p>
-        <ol class="smalltxt">
-          <li>Crie um repositório no GitHub.</li>
-          <li>Faça upload deste arquivo <b>checklist_site.html</b> (o único arquivo necessário).</li>
-          <li>Vá em Settings → Pages e selecione a branch <b>main</b> e a pasta <b>/ (root)</b>.</li>
-          <li>Salve. Em alguns minutos o site estará disponível em <i>https://seu-usuario.github.io/seu-repo</i>.</li>
-        </ol>
-        <p class="smalltxt">Quer que eu gere um ZIP pronto para upload com instruções? Peça que eu gere.</p>
+      <div className="space-y-2 mb-8">
+        <NavButton active={activePane === 'dashboard'} onClick={() => setActivePane('dashboard')}>📊 Dashboard</NavButton>
+        <NavButton active={activePane === 'projects'} onClick={() => setActivePane('projects')}>📁 Projetos</NavButton>
+        {currentProject && (
+          <NavButton active={activePane === 'checklist'} onClick={() => setActivePane('checklist')}>
+            ✅ {currentProject.substring(0, 15)}...
+          </NavButton>
+        )}
+        <NavButton active={activePane === 'activity'} onClick={() => setActivePane('activity')}>
+          <Activity className="w-4 h-4 inline mr-2" />Atividades
+        </NavButton>
       </div>
 
-    </div>
+      <div className="p-4 rounded-xl bg-gray-100 mb-6">
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-sm font-semibold">Sincronização</span>
+          <button onClick={syncData} disabled={syncing} className="p-2 hover:bg-blue-100 rounded-lg">
+            <RefreshCw className={`w-4 h-4 text-blue-600 ${syncing ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
+        {lastSync && <p className="text-xs text-gray-500">Última: {lastSync.toLocaleTimeString('pt-BR')}</p>}
+        <div className={`mt-2 px-2 py-1 rounded-lg text-xs ${syncing ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
+          {syncing ? '🔄 Sincronizando...' : '✓ Sincronizado'}
+        </div>
+      </div>
 
-  </main>
-</div>
-
-<script>
-/* App data structure in localStorage:
-strapSite = {
-  projects: {
-    "Project name": { meta: {category, created}, tasks: { "Section::Task": true/false }, customSections: {section: [tasks...] } }
-  },
-  categories: ["Default", "Complexo"]
-}
-*/
-
-const defaultSections = {
-  "Preparação do Modelo": [
-    "Definir o unifilar",
-    "Lançar os tipos de perfis",
-    "Corrigir a orientação dos perfis",
-    "Articular barras rotuladas",
-    "Contraventamentos trabalhando apenas à tração"
-  ],
-  "Determinar Vistas": [
-    "Vista 3D",
-    "Eixos",
-    "Filas",
-    "Elevações",
-    "Marcas de eixo (se aplicável)",
-    "Cotas (se aplicável)"
-  ],
-  "Condições de Contorno": ["Aplicar apoios","Ligações rígidas (se aplicável)"],
-  "Carregamentos": ["Lançar carregamentos (peso próprio +10%)","Configurar padrões","Configurar carregamentos de serviço","Definir combinações"],
-  "Verificações": ["Verificação da deformada","Verificação dos diagramas de esforços","Verificação das reações de apoio","Combinar barras contínuas","Inserir travamentos de FLB","Inserir travamentos de FLT"],
-  "Configurações do Projeto": ["Configurar parâmetros","Definir barras idênticas"],
-  "Dimensionamento": ["Dimensionar estrutura e atualizar geometria"],
-  "Ligações": ["Criar e verificar ligações no IDEA Statica (se aplicável)"]
+      <div className="p-4 rounded-xl bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200">
+        <p className="text-sm font-bold mb-4">➕ Criar Novo Projeto</p>
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Nome do projeto"
+          className="w-full px-3 py-2 rounded-lg mb-3 bg-white border-2 border-gray-300 focus:ring-2 focus:ring-green-500"
+        />
+        <select
+          value={category}
+          onChange={(e) => setCategory(e.target.value)}
+          className="w-full px-3 py-2 rounded-lg mb-3 bg-white border-2 border-gray-300 focus:ring-2 focus:ring-green-500"
+        >
+          {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+        </select>
+        <button onClick={handleCreate} className="w-full bg-gradient-to-r from-green-600 to-emerald-600 text-white py-2.5 rounded-lg font-bold hover:shadow-lg">
+          Criar
+        </button>
+      </div>
+    </aside>
+  );
 };
 
-function getStore(){
-  return JSON.parse(localStorage.getItem('strapSite') || '{}');
-}
-function saveStore(s){ localStorage.setItem('strapSite', JSON.stringify(s)); }
+const NavButton = ({ active, onClick, children }) => (
+  <button onClick={onClick} className={`w-full text-left px-4 py-3 rounded-xl font-semibold transition-all ${active ? 'bg-gradient-to-r from-blue-100 to-purple-100 text-blue-700 shadow-md' : 'hover:bg-gray-100 text-gray-700'}`}>
+    {children}
+  </button>
+);
 
-function ensureInit(){
-  const s = getStore();
-  if(!s.categories) s.categories = ["Geral","Estrutural"];
-  if(!s.projects) s.projects = {};
-  if(!s.defaultSections) s.defaultSections = defaultSections;
-  saveStore(s);
-}
-ensureInit();
+const Dashboard = ({ projects, onOpenProject }) => {
+  const projectList = Object.entries(projects);
+  const totalProjects = projectList.length;
+  const avgProgress = totalProjects > 0 ? Math.round(projectList.reduce((sum, [_, p]) => {
+    const tasks = Object.values(p.tasks || {});
+    return sum + (tasks.filter(t => t).length / (tasks.length || 1)) * 100;
+  }, 0) / totalProjects) : 0;
 
-/* NAV */
-function showPane(name){
-  document.querySelectorAll('[id^="pane-"]').forEach(p=>p.style.display='none');
-  document.getElementById('pane-'+name).style.display='block';
-  document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('active'));
-  document.getElementById('nav-'+name).classList.add('active');
-  if(name==='dashboard') renderDashboard();
-  if(name==='projects') loadProjects();
-  if(name==='checklist') {
-    // nothing
-  }
-}
+  return (
+    <div>
+      <h1 className="text-4xl font-bold mb-8 bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Dashboard</h1>
+      
+      <div className="grid grid-cols-3 gap-6 mb-8">
+        <div className="bg-white rounded-2xl p-6 shadow-xl border-2 border-blue-100">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center text-2xl">📁</div>
+            <h3 className="text-sm text-gray-500 font-semibold">Projetos</h3>
+          </div>
+          <p className="text-5xl font-bold text-blue-600">{totalProjects}</p>
+        </div>
+        
+        <div className="bg-white rounded-2xl p-6 shadow-xl border-2 border-emerald-100">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-12 h-12 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl flex items-center justify-center text-2xl">📊</div>
+            <h3 className="text-sm text-gray-500 font-semibold">Progresso</h3>
+          </div>
+          <p className="text-5xl font-bold text-emerald-600">{avgProgress}%</p>
+        </div>
+        
+        <div className="bg-white rounded-2xl p-6 shadow-xl border-2 border-purple-100">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center text-2xl">✓</div>
+            <h3 className="text-sm text-gray-500 font-semibold">Tarefas</h3>
+          </div>
+          <p className="text-5xl font-bold text-purple-600">
+            {projectList.reduce((sum, [_, p]) => sum + Object.values(p.tasks || {}).filter(t => t).length, 0)}
+          </p>
+        </div>
+      </div>
 
-/* THEME */
-function toggleTheme(){
-  const el = document.getElementById('app');
-  const current = el.getAttribute('data-theme');
-  const nxt = current==='light' ? 'dark' : 'light';
-  el.setAttribute('data-theme', nxt);
-  document.getElementById('currentTheme').innerText = nxt==='light'?'Claro':'Escuro';
-}
+      <div className="bg-white rounded-2xl p-6 shadow-xl border-2 border-gray-100">
+        <h2 className="text-2xl font-bold mb-6">Projetos Recentes</h2>
+        <div className="space-y-4">
+          {projectList.length === 0 ? (
+            <p className="text-center text-gray-500 py-8">Nenhum projeto ainda. Crie seu primeiro!</p>
+          ) : (
+            projectList.sort((a, b) => new Date(b[1].meta.created) - new Date(a[1].meta.created)).slice(0, 5).map(([name, project]) => {
+              const progress = Math.round((Object.values(project.tasks).filter(t => t).length / Object.values(project.tasks).length) * 100) || 0;
+              return (
+                <div key={name} className="flex items-center justify-between p-4 rounded-xl bg-gradient-to-r from-gray-50 to-blue-50 border-2 border-gray-200 hover:shadow-lg transition-all">
+                  <div className="flex-1">
+                    <h3 className="font-bold text-lg">{name}</h3>
+                    <p className="text-sm text-gray-500 mt-1">{project.meta.category} • {progress}%</p>
+                    <div className="w-64 h-2 bg-gray-200 rounded-full overflow-hidden mt-2">
+                      <div className="h-full bg-gradient-to-r from-emerald-500 to-green-500" style={{ width: `${progress}%` }} />
+                    </div>
+                    <p className="text-xs text-gray-400 mt-2">Por {project.meta.createdBy}</p>
+                  </div>
+                  <button onClick={() => onOpenProject(name)} className="ml-4 px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl hover:shadow-lg font-bold">
+                    Abrir
+                  </button>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
 
-/* CATEGORIES */
-function loadCategories(){
-  const s = getStore();
-  const sel = document.getElementById('newProjectCategory');
-  sel.innerHTML = '';
-  s.categories.forEach(c=>{
-    const opt = document.createElement('option'); opt.value=c; opt.innerText=c; sel.appendChild(opt);
-  });
-  const list = document.getElementById('categoryList'); list.innerHTML='';
-  s.categories.forEach(c=>{
-    const div=document.createElement('div'); div.className='project-row';
-    div.innerHTML = `<div class="meta">${c}</div><div><button class="ghost" onclick="deleteCategory('${c}')">Excluir</button></div>`;
-    list.appendChild(div);
-  });
-}
-function createCategory(){
-  const name = document.getElementById('newCategoryName').value.trim();
-  if(!name) return alert('Nome inválido');
-  const s=getStore(); if(!s.categories.includes(name)) s.categories.push(name);
-  saveStore(s); loadCategories(); document.getElementById('newCategoryName').value='';
-}
-function openCreateCategory(){ document.getElementById('newCategoryName').focus(); }
-function deleteCategory(name){
-  if(!confirm('Excluir categoria "'+name+'"? Essa ação não removerá projetos.')) return;
-  const s=getStore(); s.categories = s.categories.filter(c=>c!==name); saveStore(s); loadCategories();
-}
+const ProjectsList = ({ projects, onOpenProject, onDeleteProject }) => {
+  const [filter, setFilter] = useState('');
+  const projectList = Object.entries(projects).filter(([name]) => name.toLowerCase().includes(filter.toLowerCase()));
 
-/* PROJECTS */
-let currentProject = null;
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-8">
+        <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Projetos</h1>
+        <input type="text" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="🔍 Buscar..." className="px-4 py-3 rounded-xl bg-white border-2 border-gray-300 focus:ring-2 focus:ring-blue-500 w-80" />
+      </div>
 
-function createProject(){
-  const name = document.getElementById('newProjectName').value.trim();
-  if(!name) return alert('Digite um nome de projeto');
-  const s=getStore();
-  if(s.projects[name]) return alert('Já existe projeto com esse nome');
-  const category = document.getElementById('newProjectCategory').value || s.categories[0];
-  s.projects[name] = { meta:{category:category, created:new Date().toISOString()}, tasks:{}, customSections:{} };
-  // initialize tasks from defaultSections
-  Object.entries(s.defaultSections).forEach(([sec,arr])=>{
-    arr.forEach(t=> s.projects[name].tasks[sec+'::'+t] = false);
-  });
-  saveStore(s);
-  document.getElementById('newProjectName').value='';
-  loadProjects(); showPane('checklist'); openProject(name);
-}
-function loadProjects(){
-  const s=getStore();
-  const list = document.getElementById('projectsList');
-  const recent = document.getElementById('recentProjects');
-  list.innerHTML=''; recent.innerHTML='';
-  const entries = Object.entries(s.projects).sort((a,b)=> new Date(b[1].meta.created) - new Date(a[1].meta.created));
-  document.getElementById('cardProjects').innerText = entries.length + ' projetos';
-  entries.forEach(([name,data])=>{
-    const row=document.createElement('div'); row.className='project-row';
-    const meta=document.createElement('div'); meta.className='meta';
-    meta.innerHTML = `<div><strong>${name}</strong><div class="kv">${data.meta.category}</div></div>`;
-    const actions=document.createElement('div');
-    const pct = projectProgressValue(data);
-    actions.innerHTML = `<button class="ghost" onclick="openProject('${name}')">Abrir</button>
-                         <button class="ghost" onclick="exportProject('${name}')">Export</button>
-                         <button class="ghost" onclick="duplicateProject('${name}')">Duplicar</button>
-                         <button class="ghost" style="background:var(--danger);color:white" onclick="deleteProjectName('${name}')">Excluir</button>`;
-    row.appendChild(meta); row.appendChild(actions);
-    list.appendChild(row);
+      <div className="space-y-4">
+        {projectList.length === 0 ? (
+          <p className="text-center text-gray-500 py-16">Nenhum projeto encontrado</p>
+        ) : (
+          projectList.map(([name, project]) => {
+            const progress = Math.round((Object.values(project.tasks).filter(t => t).length / Object.values(project.tasks).length) * 100) || 0;
+            return (
+              <div key={name} className="flex items-center justify-between p-6 rounded-2xl bg-white shadow-xl border-2 border-gray-100 hover:shadow-2xl transition-all">
+                <div className="flex-1">
+                  <h3 className="text-2xl font-bold">{name}</h3>
+                  <p className="text-sm text-gray-500 mt-2">{project.meta.category}</p>
+                  <div className="mt-3">
+                    <div className="w-96 h-3 bg-gray-200 rounded-full overflow-hidden">
+                      <div className="h-full bg-gradient-to-r from-emerald-500 to-green-500" style={{ width: `${progress}%` }} />
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">{progress}% concluído</p>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-3">Criado por {project.meta.createdBy} • {new Date(project.meta.created).toLocaleDateString('pt-BR')}</p>
+                </div>
+                <div className="flex gap-3">
+                  <button onClick={() => onOpenProject(name)} className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:shadow-lg font-bold">
+                    Abrir
+                  </button>
+                  <button onClick={() => confirm(`Excluir "${name}"?`) && onDeleteProject(name)} className="px-4 py-3 bg-red-600 text-white rounded-xl hover:shadow-lg">
+                    <Trash2 className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+};
 
-    // recent
-    const rec=document.createElement('div'); rec.className='project-row';
-    rec.innerHTML = `<div><strong>${name}</strong><div class="kv">${Math.round(pct)}% • ${data.meta.category}</div></div>
-                     <div><button class="ghost" onclick="openProject('${name}')">Abrir</button></div>`;
-    recent.appendChild(rec);
-  });
-  loadCategories(); renderDashboard();
-}
+const ChecklistView = ({ projectName, project, defaultSections, onToggleTask, onDeleteProject }) => {
+  const sections = { ...defaultSections, ...project.customSections };
+  const progress = Math.round((Object.values(project.tasks).filter(t => t).length / Object.values(project.tasks).length) * 100) || 0;
 
-function openProject(name){
-  currentProject = name;
-  const s=getStore();
-  const project = s.projects[name];
-  if(!project) return alert('Projeto não encontrado');
-  document.getElementById('checklistTitle').innerText = name;
-  document.getElementById('metaName').innerText = name;
-  document.getElementById('metaCategory').innerText = project.meta.category;
-  generateChecklistUI(project);
-  showPane('checklist');
-}
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-3xl font-bold">{projectName}</h1>
+          <p className="text-sm text-gray-500 mt-1">{project.meta.category} • Por {project.meta.createdBy}</p>
+        </div>
+        <button onClick={() => confirm(`Excluir "${projectName}"?`) && onDeleteProject()} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">
+          Excluir
+        </button>
+      </div>
 
-function deleteProjectName(name){
-  if(!confirm('Excluir projeto "'+name+'"?')) return;
-  const s=getStore(); delete s.projects[name]; saveStore(s); loadProjects();
-}
+      <div className="bg-white rounded-xl p-6 shadow-lg mb-6">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="font-semibold">Progresso</h3>
+          <span className="text-2xl font-bold text-emerald-600">{progress}%</span>
+        </div>
+        <div className="w-full h-4 bg-gray-200 rounded-full overflow-hidden">
+          <div className="h-full bg-emerald-500 transition-all" style={{ width: `${progress}%` }} />
+        </div>
+      </div>
 
-function deleteProject(){
-  if(!currentProject) return;
-  if(!confirm('Excluir projeto "'+currentProject+'"? Esta ação não pode ser desfeita.')) return;
-  const s=getStore(); delete s.projects[currentProject]; saveStore(s); currentProject=null; loadProjects(); showPane('dashboard');
-}
+      <div className="space-y-6">
+        {Object.entries(sections).map(([section, tasks]) => (
+          <div key={section} className="bg-white rounded-xl p-6 shadow-lg">
+            <h3 className="text-lg font-bold mb-4">{section}</h3>
+            <div className="space-y-2">
+              {tasks.map(task => {
+                const taskId = `${section}::${task}`;
+                const checked = project.tasks[taskId] || false;
+                return (
+                  <div key={taskId} className="flex items-center gap-3 p-3 rounded-lg bg-gray-50">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) => onToggleTask(projectName, taskId, e.target.checked)}
+                      className="w-5 h-5 text-blue-600 rounded"
+                    />
+                    <span className={`flex-1 ${checked ? 'line-through text-gray-400' : ''}`}>{task}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
 
-function duplicateProject(name){
-  const s=getStore(); const orig = s.projects[name];
-  const newName = name + ' (cópia)';
-  s.projects[newName] = JSON.parse(JSON.stringify(orig));
-  s.projects[newName].meta.created = new Date().toISOString();
-  saveStore(s); loadProjects();
-}
+const ActivityLog = ({ activityLog }) => {
+  return (
+    <div>
+      <h1 className="text-4xl font-bold mb-8 bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Atividades</h1>
+      
+      <div className="bg-white rounded-xl p-6 shadow-lg">
+        <div className="space-y-3">
+          {activityLog.length === 0 ? (
+            <p className="text-gray-500 text-center py-8">Nenhuma atividade registrada</p>
+          ) : (
+            activityLog.map(entry => (
+              <div key={entry.id} className="p-4 rounded-lg bg-gray-50">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <p className="font-semibold text-sm">{entry.user}</p>
+                    <p className="text-gray-600 mt-1">{entry.details}</p>
+                  </div>
+                  <span className="text-xs text-gray-500">{new Date(entry.timestamp).toLocaleString('pt-BR')}</span>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
 
-/* Checklist UI */
-function generateChecklistUI(project){
-  const area = document.getElementById('checklistArea'); area.innerHTML='';
-  // show default sections then custom
-  const sections = Object.assign({}, getStore().defaultSections, project.customSections || {});
-  Object.entries(sections).forEach(([section,tasks])=>{
-    const secDiv = document.createElement('div'); secDiv.className='section';
-    secDiv.innerHTML = `<h4>${section} <button class="ghost" style="margin-left:8px" onclick="addTaskToSectionPrompt('${section}')">+ tarefa</button> <button class="ghost" onclick="deleteSection('${section}')">Excluir seção</button></h4>`;
-    tasks.forEach(t=>{
-      const id = section + '::' + t;
-      const checked = project.tasks[id];
-      const taskDiv = document.createElement('div'); taskDiv.className='task';
-      taskDiv.innerHTML = `<input type="checkbox" ${checked ? 'checked':''} onchange="toggleTask('${id}',this.checked)">
-                           <div class="ttext">${t}</div>
-                           <div style="margin-left:auto"><button class="ghost" onclick="removeTask('${section}','${t}')">Excluir</button></div>`;
-      secDiv.appendChild(taskDiv);
-    });
-    area.appendChild(secDiv);
-  });
-  updateProjectProgressUI();
-}
-
-/* Tasks and sections operations */
-function toggleTask(id, val){
-  const s=getStore(); if(!currentProject) return;
-  s.projects[currentProject].tasks[id] = !!val; saveStore(s); updateProjectProgressUI(); renderDashboard();
-}
-function removeTask(section, task){
-  if(!confirm('Excluir tarefa?')) return;
-  const s=getStore(); const proj = s.projects[currentProject];
-  // remove from tasks map
-  delete proj.tasks[section+'::'+task];
-  // remove from customSections or defaultSections copy
-  if(proj.customSections && proj.customSections[section]){
-    proj.customSections[section] = proj.customSections[section].filter(t=>t!==task);
-    if(proj.customSections[section].length===0) delete proj.customSections[section];
-  } else {
-    // if it's default, mark removal by adding a flag in project to skip (simple approach: add negative flag)
-    // we'll just remove from default rendering by adding empty customSections override
-    proj.customSections = proj.customSections || {};
-    proj.customSections[section] = (proj.customSections[section] || getStore().defaultSections[section] || []).filter(t=>t!==task);
-  }
-  saveStore(s); generateChecklistUI(proj);
-}
-function addTaskToSectionPrompt(section){
-  const t = prompt('Nome da nova tarefa em "'+section+'":');
-  if(!t) return;
-  addTaskToSection(section, t);
-}
-function addTaskToSection(section, task){
-  const s=getStore(); const proj = s.projects[currentProject];
-  proj.customSections = proj.customSections || {};
-  if(!proj.customSections[section]) proj.customSections[section] = (getStore().defaultSections[section] || []).slice();
-  proj.customSections[section].push(task);
-  proj.tasks[section+'::'+task] = false;
-  saveStore(s); generateChecklistUI(proj);
-}
-function addTaskUI(){
-  const section = prompt('Em qual seção quer adicionar a tarefa? (digite o nome exato ou crie nova seção)');
-  if(!section) return;
-  const task = prompt('Nome da tarefa:');
-  if(!task) return;
-  // ensure section exists in customSections
-  const s=getStore(); const proj = s.projects[currentProject];
-  proj.customSections = proj.customSections || {};
-  proj.customSections[section] = proj.customSections[section] || [];
-  proj.customSections[section].push(task);
-  proj.tasks[section+'::'+task] = false;
-  saveStore(s); generateChecklistUI(proj);
-}
-function addCategoryUI(){
-  const name = prompt('Nome da nova categoria:');
-  if(!name) return;
-  const s=getStore(); if(!s.categories.includes(name)) s.categories.push(name);
-  saveStore(s); loadCategories();
-}
-function deleteSection(section){
-  if(!confirm('Excluir seção "'+section+'"?')) return;
-  const s=getStore(); const proj = s.projects[currentProject];
-  // remove tasks belonging to section
-  Object.keys(proj.tasks).forEach(k => { if(k.startsWith(section+'::')) delete proj.tasks[k]; });
-  // remove customSections entry
-  if(proj.customSections && proj.customSections[section]) delete proj.customSections[section];
-  saveStore(s); generateChecklistUI(proj);
-}
-
-/* Project progress */
-function projectProgressValue(project){
-  const keys = Object.keys(project.tasks || {});
-  if(keys.length===0) return 0;
-  const done = keys.filter(k=>project.tasks[k]).length;
-  return (done/keys.length)*100;
-}
-function updateProjectProgressUI(){
-  const s=getStore(); if(!currentProject) return;
-  const proj = s.projects[currentProject];
-  const val = projectProgressValue(proj);
-  document.getElementById('projectProgress').style.width = Math.round(val)+'%';
-  document.getElementById('progressLabel').innerText = Math.round(val)+'%';
-  document.getElementById('metaName').innerText = currentProject;
-  document.getElementById('metaCategory').innerText = proj.meta.category;
-}
-function renderDashboard(){
-  const s=getStore();
-  const entries = Object.entries(s.projects);
-  const avg = entries.length ? Math.round(entries.reduce((acc,[n,p])=>acc+projectProgressValue(p),0)/entries.length) : 0;
-  document.getElementById('avgProgress').style.width = avg+'%';
-  document.getElementById('avgLabel').innerText = avg+'%';
-  // category summary
-  const summary = {};
-  entries.forEach(([n,p])=>{ const c=p.meta.category||'Geral'; summary[c]=summary[c]||{count:0,acc:0}; summary[c].count++; summary[c].acc+=projectProgressValue(p); });
-  const cont = document.getElementById('categorySummary'); cont.innerHTML='';
-  Object.entries(summary).forEach(([c,v])=>{
-    const pct = Math.round(v.acc/v.count);
-    const div = document.createElement('div'); div.className='smalltxt';
-    div.innerText = `${c}: ${v.count} projetos • ${pct}% médio`;
-    cont.appendChild(div);
-  });
-  // recent handled in loadProjects
-}
-
-/* Save & export */
-function saveCurrent(){
-  if(!currentProject) return alert('Abra um projeto');
-  const s=getStore(); saveStore(s); alert('Salvo!');
-  loadProjects();
-}
-function exportProject(name){
-  const s=getStore();
-  const data = s.projects[name];
-  if(!data) return alert('Projeto não encontrado');
-  const blob = new Blob([JSON.stringify({name:name,project:data},null,2)],{type:'application/json'});
-  const url = URL.createObjectURL(blob);
-  const a=document.createElement('a'); a.href=url; a.download = name.replace(/\s+/g,'_') + '.strap.json'; a.click();
-}
-function exportAll(){
-  const s=getStore();
-  const blob = new Blob([JSON.stringify(s,null,2)],{type:'application/json'});
-  const url = URL.createObjectURL(blob);
-  const a=document.createElement('a'); a.href=url; a.download = 'strap_all_export.json'; a.click();
-}
-function importAll(){
-  const input = document.createElement('input'); input.type='file'; input.accept='.json';
-  input.onchange = e => {
-    const file = e.target.files[0]; if(!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => {
-      try{
-        const data = JSON.parse(ev.target.result);
-        if(data.projects || data.categories){
-          localStorage.setItem('strapSite', JSON.stringify(data));
-        } else if(data.project && data.name){
-          const s = getStore(); s.projects[data.name] = data.project; saveStore(s);
-        } else {
-          throw new Error('Formato inválido');
-        }
-        alert('Importado com sucesso'); loadProjects();
-      } catch(err){ alert('Erro ao importar: '+err.message); }
-    };
-    reader.readAsText(file);
-  };
-  input.click();
-}
-
-/* helpers */
-function openProject(name){
-  currentProject = name;
-  const s=getStore(); const proj = s.projects[name];
-  if(!proj) return alert('Projeto não encontrado');
-  document.getElementById('checklistTitle').innerText = name;
-  document.getElementById('metaName').innerText = name;
-  document.getElementById('metaCategory').innerText = proj.meta.category;
-  generateChecklistUI(proj);
-  showPane('checklist');
-}
-function renameProject(){
-  const n = prompt('Novo nome:', currentProject); if(!n) return;
-  const s=getStore(); s.projects[n] = s.projects[currentProject]; s.projects[n].meta.created = new Date().toISOString(); delete s.projects[currentProject]; saveStore(s); currentProject = n; loadProjects(); openProject(n);
-}
-function changeCategory(){
-  const s=getStore(); const cat = prompt('Nova categoria:', s.projects[currentProject].meta.category); if(!cat) return;
-  s.projects[currentProject].meta.category = cat; if(!s.categories.includes(cat)) s.categories.push(cat); saveStore(s); loadProjects(); openProject(currentProject);
-}
-
-/* init */
-loadCategories(); loadProjects();
-showPane('dashboard');
-</script>
-</body>
-</html>
+export default StrapCollaborative;
